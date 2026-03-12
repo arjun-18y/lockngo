@@ -22,7 +22,7 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@Table(name = "lockers")
+@Table(name = "backend_lockers")
 public class Locker {
 
     @Id

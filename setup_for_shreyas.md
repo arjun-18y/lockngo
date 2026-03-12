@@ -22,11 +22,11 @@ Optional (only if backend is needed):
 2. `Maven` - https://maven.apache.org/download.cgi
 3. `Docker Desktop` (for MySQL container) - https://www.docker.com/products/docker-desktop/
 
-## 3) Run Full App (Docker + Backend + Frontend)
+## 3) Run Full App (Backend + Frontend)
 
-Run these 3 in parallel using 3 terminals.
+Run these in parallel.
 
-Terminal 1: Start MySQL in Docker
+Terminal 1 (optional): Start MySQL in Docker (local fallback)
 
 ```bash
 docker rm -f lockngo-mysql
@@ -34,14 +34,17 @@ docker run --name lockngo-mysql -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=lo
 docker logs -f lockngo-mysql
 ```
 
-Terminal 2: Start Backend
+Terminal 2: Start Backend (Supabase Postgres recommended for deploy)
 
 
 ```powershell
 cd "E:\project\sem 6\shreyas\lockn-go-ind-main\lockn-go-ind-main\backend"
-$env:MAIL_USERNAME="lockngo547@gmail.com"
-$env:MAIL_APP_PASSWORD="tqyqsculshewrooa"
-$env:MAIL_FROM="lockngo547@gmail.com"
+$env:DB_URL="jdbc:postgresql://db.<your-project-ref>.supabase.co:5432/postgres?sslmode=require"
+$env:DB_USER="<supabase_db_user>"
+$env:DB_PASSWORD="<supabase_db_password>"
+$env:MAIL_USERNAME="<your_gmail_address>"
+$env:MAIL_APP_PASSWORD="<your_16_char_google_app_password>"
+$env:MAIL_FROM="<your_gmail_address>"
 mvn spring-boot:run
 ```
 
@@ -176,7 +179,7 @@ This repo now includes a Render blueprint file:
      - `VITE_SUPABASE_PUBLISHABLE_KEY`
      - `VITE_BACKEND_URL` (URL of backend service)
    - Backend (`lockngo-backend`):
-     - `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
+     - `DB_URL`, `DB_USER`, `DB_PASSWORD`
      - `JWT_SECRET`
      - `MAIL_USERNAME`, `MAIL_APP_PASSWORD`, `MAIL_FROM`
 
@@ -197,6 +200,7 @@ Create two services:
 
 ### Important notes
 
-1. Backend uses MySQL config (`DB_*`), so provide a reachable MySQL instance.
-2. Frontend core app (stations/bookings/admin) works with Supabase directly.
-3. Backend is mainly required for booking confirmation email endpoint.
+1. Frontend core app (stations/bookings/admin) works with Supabase directly.
+2. Backend can use Supabase Postgres via `DB_URL` (recommended on Render).
+3. Backend local fallback can still use MySQL (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`).
+4. Backend tables are namespaced as `backend_*` to avoid collision with frontend Supabase tables.

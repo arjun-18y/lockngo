@@ -116,6 +116,9 @@ PowerShell (Windows) quick run:
 
 ```powershell
 cd "E:\project\sem 6\shreyas\lockn-go-ind-main\lockn-go-ind-main\backend"
+$env:DB_URL="jdbc:postgresql://db.<your-project-ref>.supabase.co:5432/postgres?sslmode=require"
+$env:DB_USER="<supabase_db_user>"
+$env:DB_PASSWORD="<supabase_db_password>"
 $env:MAIL_USERNAME="<your_gmail_address>"
 $env:MAIL_APP_PASSWORD="<your_16_char_google_app_password>"
 $env:MAIL_FROM="<your_gmail_address>"
@@ -139,4 +142,8 @@ cd backend
 mvn spring-boot:run
 ```
 
-Backend DB config is in `backend/src/main/resources/application.yml`.
+Backend DB config supports both:
+- Supabase Postgres via `DB_URL`, `DB_USER`, `DB_PASSWORD`
+- MySQL fallback via `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
+
+Backend entities use `backend_*` table names to avoid collisions with frontend Supabase tables.

@@ -25,7 +25,7 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@Table(name = "access_logs")
+@Table(name = "backend_access_logs")
 public class AccessLog {
 
     @Id

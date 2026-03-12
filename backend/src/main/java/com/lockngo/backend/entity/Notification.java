@@ -25,7 +25,7 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@Table(name = "notifications")
+@Table(name = "backend_notifications")
 public class Notification {
 
     @Id

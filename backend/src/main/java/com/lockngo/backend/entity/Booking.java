@@ -25,7 +25,7 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@Table(name = "bookings")
+@Table(name = "backend_bookings")
 public class Booking {
 
     @Id
