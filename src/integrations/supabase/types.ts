@@ -119,6 +119,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "lockers_size_fkey"
+            columns: ["size"]
+            isOneToOne: false
+            referencedRelation: "locker_sizes"
+            referencedColumns: ["name"]
+          },
+          {
             foreignKeyName: "lockers_station_id_fkey"
             columns: ["station_id"]
             isOneToOne: false
@@ -126,6 +133,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      locker_sizes: {
+        Row: {
+          created_at: string
+          dimensions: string | null
+          display_name: string
+          name: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          dimensions?: string | null
+          display_name: string
+          name: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          dimensions?: string | null
+          display_name?: string
+          name?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       incidents: {
         Row: {
@@ -382,6 +416,17 @@ export type Database = {
       process_booking_expiries: {
         Args: Record<PropertyKey, never>
         Returns: number
+      }
+      seed_demo_stations: {
+        Args: {
+          p_lockers_per_size?: number
+          p_station_count?: number
+        }
+        Returns: Json
+      }
+      seed_india_stations_50: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
       }
     }
     Enums: {

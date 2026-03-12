@@ -23,6 +23,7 @@ Create a `.env` file in this folder (`lockn-go-ind-main/lockn-go-ind-main`) with
 VITE_SUPABASE_URL="https://<your-project-ref>.supabase.co"
 VITE_SUPABASE_PUBLISHABLE_KEY="<your-anon-key>"
 VITE_SUPABASE_PROJECT_ID="<your-project-ref>"
+VITE_BACKEND_URL="http://localhost:8081"
 ```
 
 Notes:
@@ -98,10 +99,40 @@ notify pgrst, 'reload schema';
 ### No stations/lockers visible
 - Insert sample station + lockers from admin panel or SQL.
 
-## 10) Backend (Optional)
+## 10) Booking Confirmation Email (Gmail SMTP, No Domain Needed)
 
-Current frontend is Supabase-first and works without Spring backend.
-If you also want backend:
+Booking confirmation emails are sent from Spring backend endpoint:
+`POST /api/email/booking-confirmation`
+
+Set these backend environment variables before running `mvn spring-boot:run`:
+
+```bash
+MAIL_USERNAME=<your_gmail_address>
+MAIL_APP_PASSWORD=<your_16_char_google_app_password>
+MAIL_FROM=<your_gmail_address>
+```
+
+PowerShell (Windows) quick run:
+
+```powershell
+cd "E:\project\sem 6\shreyas\lockn-go-ind-main\lockn-go-ind-main\backend"
+$env:MAIL_USERNAME="<your_gmail_address>"
+$env:MAIL_APP_PASSWORD="<your_16_char_google_app_password>"
+$env:MAIL_FROM="<your_gmail_address>"
+mvn spring-boot:run
+```
+
+Notes:
+- Enable 2-Step Verification on your Google account first.
+- Generate App Password from Google account security settings.
+- Keep `VITE_BACKEND_URL` pointing to your backend URL (default: `http://localhost:8081`).
+
+After this, each successful booking triggers an email to the logged-in user through Gmail SMTP.
+
+## 11) Backend (Optional)
+
+Current frontend is Supabase-first, but booking email now uses backend SMTP.
+To enable booking emails, run backend too:
 
 ```bash
 cd backend

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Navbar } from "@/components/Navbar";
@@ -11,7 +11,6 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Calendar } from "@/components/ui/calendar";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Lock, Calendar as CalendarIcon } from "lucide-react";
 
 interface Station {
   id: string;
@@ -27,23 +26,50 @@ interface Locker {
   daily_rate: number;
 }
 
+interface LockerSizeMeta {
+  name: string;
+  display_name: string;
+  dimensions: string | null;
+}
+
+interface LockerSizeOption {
+  size: string;
+  displayName: string;
+  dimensions: string | null;
+  availableCount: number;
+  sampleLocker: Locker;
+}
+
+const FALLBACK_LOCKER_SIZES: LockerSizeMeta[] = [
+  { name: "small", display_name: "Small", dimensions: "Side 35 cm, Height 40 cm" },
+  { name: "medium", display_name: "Medium", dimensions: "Side 45 cm, Height 55 cm" },
+  { name: "large", display_name: "Large", dimensions: "Side 60 cm, Height 75 cm" },
+];
+
 export default function Booking() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const backendBaseUrl = (import.meta.env.VITE_BACKEND_URL || "http://localhost:8081").replace(/\/+$/, "");
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   
   const [stations, setStations] = useState<Station[]>([]);
   const [selectedStation, setSelectedStation] = useState(searchParams.get("station") || "");
   const [lockers, setLockers] = useState<Locker[]>([]);
-  const [selectedLocker, setSelectedLocker] = useState("");
+  const [lockerSizesByName, setLockerSizesByName] = useState<Record<string, LockerSizeMeta>>({});
+  const [selectedLockerSize, setSelectedLockerSize] = useState("");
   const [durationType, setDurationType] = useState<"hourly" | "daily">("hourly");
   const [startDate, setStartDate] = useState<Date>(new Date());
   const [hours, setHours] = useState("4");
+  const [bookingStatusMessage, setBookingStatusMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
 
   useEffect(() => {
     checkAuth();
     fetchStations();
+    fetchLockerSizes();
   }, []);
 
   useEffect(() => {
@@ -51,13 +77,6 @@ export default function Booking() {
       fetchLockers(selectedStation);
     }
   }, [selectedStation]);
-
-  useEffect(() => {
-    if (!selectedLocker) return;
-    if (!lockers.some((locker) => locker.id === selectedLocker)) {
-      setSelectedLocker("");
-    }
-  }, [lockers, selectedLocker]);
 
   useEffect(() => {
     if (!selectedStation) return;
@@ -103,6 +122,33 @@ export default function Booking() {
     setStations(data || []);
   };
 
+  const fetchLockerSizes = async () => {
+    const { data, error } = await supabase.from("locker_sizes").select("name, display_name, dimensions");
+
+    if (error) {
+      // Backward-compatible fallback when locker_sizes migration is not applied yet.
+      if (error.message.includes("public.locker_sizes")) {
+        const fallbackByName = FALLBACK_LOCKER_SIZES.reduce<Record<string, LockerSizeMeta>>(
+          (acc, row) => {
+            acc[row.name] = row;
+            return acc;
+          },
+          {}
+        );
+        setLockerSizesByName(fallbackByName);
+        return;
+      }
+      toast.error(error.message);
+      return;
+    }
+
+    const byName = (data || []).reduce<Record<string, LockerSizeMeta>>((acc, row) => {
+      acc[row.name] = row;
+      return acc;
+    }, {});
+    setLockerSizesByName(byName);
+  };
+
   const fetchLockers = async (stationId: string) => {
     const { data, error } = await supabase
       .from("lockers")
@@ -118,26 +164,59 @@ export default function Booking() {
     setLockers(data || []);
   };
 
+  const lockerSizeOptions = useMemo<LockerSizeOption[]>(() => {
+    const bySize = new Map<string, Locker[]>();
+    for (const locker of lockers) {
+      const current = bySize.get(locker.size) || [];
+      current.push(locker);
+      bySize.set(locker.size, current);
+    }
+
+    return Array.from(bySize.entries())
+      .map(([size, sizeLockers]) => ({
+        size,
+        displayName: lockerSizesByName[size]?.display_name || size,
+        dimensions: lockerSizesByName[size]?.dimensions || null,
+        availableCount: sizeLockers.length,
+        sampleLocker: sizeLockers[0],
+      }))
+      .sort((a, b) => a.displayName.localeCompare(b.displayName));
+  }, [lockers, lockerSizesByName]);
+
+  useEffect(() => {
+    if (!selectedLockerSize) return;
+    if (!lockerSizeOptions.some((x) => x.size === selectedLockerSize)) {
+      setSelectedLockerSize("");
+    }
+  }, [selectedLockerSize, lockerSizeOptions]);
+
   const calculateAmount = () => {
-    const locker = lockers.find((l) => l.id === selectedLocker);
-    if (!locker) return 0;
+    const selectedOption = lockerSizeOptions.find((x) => x.size === selectedLockerSize);
+    if (!selectedOption) return 0;
 
     if (durationType === "hourly") {
-      return locker.hourly_rate * parseInt(hours || "0");
+      return selectedOption.sampleLocker.hourly_rate * parseInt(hours || "0");
     } else {
-      return locker.daily_rate * parseInt(hours || "0");
+      return selectedOption.sampleLocker.daily_rate * parseInt(hours || "0");
     }
   };
 
   const handleBooking = async () => {
-    if (!selectedStation || !selectedLocker || !hours) {
+    if (!selectedStation || !selectedLockerSize || !hours) {
       toast.error("Please fill all fields");
       return;
     }
 
     setLoading(true);
+    setBookingStatusMessage(null);
     
     try {
+      const selectedLockerData = lockers.find((locker) => locker.size === selectedLockerSize);
+      if (!selectedLockerData) {
+        toast.error("No lockers available for selected size. Please try another size.");
+        return;
+      }
+
       const amount = calculateAmount();
       const endDate = new Date(startDate);
       
@@ -156,7 +235,7 @@ export default function Booking() {
         .insert({
           user_id: user.id,
           station_id: selectedStation,
-          locker_id: selectedLocker,
+          locker_id: selectedLockerData.id,
           start_time: startDate.toISOString(),
           end_time: endDate.toISOString(),
           duration_type: durationType,
@@ -173,7 +252,7 @@ export default function Booking() {
       const { error: lockerUpdateError } = await supabase
         .from("lockers")
         .update({ status: "booked", current_booking_id: booking.id })
-        .eq("id", selectedLocker);
+        .eq("id", selectedLockerData.id);
       if (lockerUpdateError) throw lockerUpdateError;
 
       // In a real app, integrate Razorpay here
@@ -195,6 +274,70 @@ export default function Booking() {
         });
       if (paymentInsertError) throw paymentInsertError;
 
+      const selectedStationData = stations.find((station) => station.id === selectedStation);
+      if (user?.email) {
+        try {
+          const emailResponse = await fetch(`${backendBaseUrl}/api/email/booking-confirmation`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              to: user.email,
+              bookingId: booking.id,
+              stationName: selectedStationData?.name || "Selected Station",
+              stationCity: selectedStationData?.city || "",
+              lockerNumber: selectedLockerData?.locker_number || "N/A",
+              lockerSize: selectedLockerData?.size || "N/A",
+              startTime: startDate.toISOString(),
+              endTime: endDate.toISOString(),
+              durationType,
+              durationValue: hours,
+              amount,
+              pinCode: pinCode,
+            }),
+          });
+
+          if (!emailResponse.ok) {
+            let detailedError = `HTTP ${emailResponse.status}`;
+            try {
+              const body = await emailResponse.json();
+              if (body && typeof body === "object") {
+                if ("message" in body && typeof body.message === "string") {
+                  detailedError = body.message;
+                } else if ("error" in body && typeof body.error === "string") {
+                  detailedError = body.error;
+                }
+              }
+            } catch {
+              try {
+                const text = await emailResponse.text();
+                if (text) detailedError = text;
+              } catch {
+                // Keep fallback HTTP status message.
+              }
+            }
+
+            const message = `Booking confirmed, but email failed: ${detailedError}`;
+            toast.error(message);
+            setBookingStatusMessage({ type: "error", text: message });
+          } else {
+            const message = "Confirmation email sent.";
+            toast.success(message);
+            setBookingStatusMessage({ type: "success", text: message });
+          }
+        } catch (emailRequestError: any) {
+          const message = `Booking confirmed, but email failed: ${emailRequestError?.message || "Unable to reach backend email service."}`;
+          toast.error(message);
+          setBookingStatusMessage({ type: "error", text: message });
+        }
+      } else {
+        console.warn("Booking confirmation email skipped: user email missing", { userId: user?.id });
+        const message = "Booking confirmed, but account email is missing.";
+        toast.error(message);
+        setBookingStatusMessage({ type: "error", text: message });
+      }
+
       toast.success("Booking confirmed! Redirecting to dashboard...");
       setTimeout(() => navigate("/dashboard"), 2000);
     } catch (error: any) {
@@ -205,7 +348,7 @@ export default function Booking() {
     }
   };
 
-  const selectedLockerData = lockers.find((l) => l.id === selectedLocker);
+  const selectedLockerOption = lockerSizeOptions.find((x) => x.size === selectedLockerSize);
 
   return (
     <div className="min-h-screen bg-background">
@@ -236,26 +379,28 @@ export default function Booking() {
                     </SelectContent>
                   </Select>
                 </div>
-
-                {selectedStation && lockers.length > 0 && (
+                {selectedStation && lockerSizeOptions.length > 0 && (
                   <div className="space-y-2">
                     <Label>Select Locker Size</Label>
-                    <RadioGroup value={selectedLocker} onValueChange={setSelectedLocker}>
-                      {lockers.map((locker) => (
-                        <div key={locker.id} className="flex items-center space-x-2 border p-4 rounded-lg">
-                          <RadioGroupItem value={locker.id} id={locker.id} />
-                          <Label htmlFor={locker.id} className="flex-1 cursor-pointer">
+                    <RadioGroup value={selectedLockerSize} onValueChange={setSelectedLockerSize}>
+                      {lockerSizeOptions.map((option) => (
+                        <div key={option.size} className="flex items-center space-x-2 border p-4 rounded-lg">
+                          <RadioGroupItem value={option.size} id={`size-${option.size}`} />
+                          <Label htmlFor={`size-${option.size}`} className="flex-1 cursor-pointer">
                             <div className="flex justify-between items-center">
                               <div>
-                                <div className="font-semibold capitalize">{locker.size} Locker</div>
+                                <div className="font-semibold">{option.displayName} Locker</div>
                                 <div className="text-sm text-muted-foreground">
-                                  Locker #{locker.locker_number}
+                                  Quantity available: {option.availableCount}
                                 </div>
+                                {option.dimensions && (
+                                  <div className="text-sm text-muted-foreground">{option.dimensions}</div>
+                                )}
                               </div>
                               <div className="text-right">
-                                <div className="font-semibold">₹{locker.hourly_rate}/hr</div>
+                                <div className="font-semibold">INR {option.sampleLocker.hourly_rate}/hr</div>
                                 <div className="text-sm text-muted-foreground">
-                                  ₹{locker.daily_rate}/day
+                                  INR {option.sampleLocker.daily_rate}/day
                                 </div>
                               </div>
                             </div>
@@ -266,7 +411,13 @@ export default function Booking() {
                   </div>
                 )}
 
-                {selectedLocker && (
+                {selectedStation && lockerSizeOptions.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    No lockers available at this station right now.
+                  </p>
+                )}
+
+                {selectedLockerSize && (
                   <>
                     <div className="space-y-2">
                       <Label>Duration Type</Label>
@@ -326,12 +477,22 @@ export default function Booking() {
                 <CardTitle>Booking Summary</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {selectedStation && selectedLockerData ? (
+                {selectedStation && selectedLockerOption ? (
                   <>
                     <div className="space-y-2">
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Locker Type</span>
-                        <span className="font-semibold capitalize">{selectedLockerData.size}</span>
+                        <span className="font-semibold">{selectedLockerOption.displayName}</span>
+                      </div>
+                      {selectedLockerOption.dimensions && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Dimensions</span>
+                          <span className="font-semibold">{selectedLockerOption.dimensions}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Available</span>
+                        <span className="font-semibold">{selectedLockerOption.availableCount}</span>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Duration</span>
@@ -342,16 +503,15 @@ export default function Booking() {
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Rate</span>
                         <span className="font-semibold">
-                          ₹{durationType === "hourly" ? selectedLockerData.hourly_rate : selectedLockerData.daily_rate}/
+                          INR {durationType === "hourly" ? selectedLockerOption.sampleLocker.hourly_rate : selectedLockerOption.sampleLocker.daily_rate}/
                           {durationType === "hourly" ? "hr" : "day"}
                         </span>
                       </div>
                     </div>
-
                     <div className="border-t pt-4">
                       <div className="flex justify-between items-center">
                         <span className="font-semibold">Total Amount</span>
-                        <span className="text-2xl font-bold text-primary">₹{calculateAmount()}</span>
+                        <span className="text-2xl font-bold text-primary">INR {calculateAmount()}</span>
                       </div>
                     </div>
 
@@ -364,16 +524,18 @@ export default function Booking() {
                       {loading ? "Processing..." : "Proceed to Payment"}
                     </Button>
 
-                    <div className="bg-accent/50 p-4 rounded-lg space-y-2 text-sm">
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Lock className="h-4 w-4" />
-                        <span>Secure payment via Razorpay</span>
+                    {bookingStatusMessage && (
+                      <div
+                        className={`rounded-md border p-3 text-sm ${
+                          bookingStatusMessage.type === "success"
+                            ? "border-green-600/40 bg-green-600/10 text-green-700"
+                            : "border-red-600/40 bg-red-600/10 text-red-700"
+                        }`}
+                      >
+                        {bookingStatusMessage.text}
                       </div>
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <CalendarIcon className="h-4 w-4" />
-                        <span>Instant QR & PIN access</span>
-                      </div>
-                    </div>
+                    )}
+
                   </>
                 ) : (
                   <p className="text-muted-foreground text-sm">
@@ -390,3 +552,5 @@ export default function Booking() {
     </div>
   );
 }
+
+

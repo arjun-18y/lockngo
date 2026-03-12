@@ -35,6 +35,7 @@ public class SecurityConfig {
                 .authenticationProvider(authenticationProvider())
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/email/booking-confirmation").permitAll()
                         .requestMatchers("/error").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/lockers/available").hasAnyRole("USER", "ADMIN")
@@ -67,4 +68,3 @@ public class SecurityConfig {
         return source;
     }
 }
-
