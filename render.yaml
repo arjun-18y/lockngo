@@ -11,6 +11,12 @@ services:
         sync: false
       - key: DB_PORT
         value: "3306"
+      - key: DB_SSL_MODE
+        value: "VERIFY_IDENTITY"
+      - key: DB_CREATE_IF_NOT_EXISTS
+        value: "false"
+      - key: DB_ALLOW_PUBLIC_KEY_RETRIEVAL
+        value: "false"
       - key: DB_NAME
         sync: false
       - key: DB_USER
